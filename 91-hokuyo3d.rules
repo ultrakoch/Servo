@@ -1,0 +1,1 @@
+SUBSYSTEMS=="usb", ATTRS{idProduct}=="0000", ATTRS{idVendor}=="15d1", NAME="hokuyo3d"

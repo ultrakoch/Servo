@@ -1,0 +1,8 @@
+check the device
+    lsusb -t
+
+make port acessable
+    sudo chmod 666 /dev/ttyUSB0
+
+Start programm
+./bin/servo_rotate /dev/ttyUSB0 3 20
