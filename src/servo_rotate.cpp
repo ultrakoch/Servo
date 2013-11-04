@@ -1,3 +1,11 @@
+/**
+* @file   ${servo_rotate.cpp}
+* @author Rainer Koch
+* @date   ${2013/11/04}
+*
+* Dynamixel-Servo control
+*/
+
 #include <math.h>
 #include <stdlib.h>
 #include <iostream>
@@ -6,132 +14,107 @@
 #include <dynamixel.h>
 
 // Control table addresses
-#define P_MOVING_SPEED_L        32
-#define P_MOVING_SPEED_H        33
+#define P_GOAL_POSITION_L     30
+#define P_GOAL_POSITION_H     31
+#define P_MOVING_SPEED_L      32
+#define P_MOVING_SPEED_H      33
+#define P_TORQUE_LIMIT_L      34
+#define P_TORQUE_LIMIT_H      35
 #define P_PRESENT_POSITION_L  36
 #define P_PRESENT_POSITION_H  37
+#define P_LED_STATUS          25
 
 using namespace std;
 
-unsigned int _seq = 0;
-unsigned int _fragmentSize = 0;
-double _angularVelocity = 0.0;
-bool _newDataAvailable = false;
-bool _running = true;
 
-
-void approachPosition(int id, int goal)
+void turn2posDynamixel(int id, int goal, int speed)
 {
-  bool approaching = true;
-  dxl_write_word( id, P_MOVING_SPEED_L, 5);
-  double approach_speed = dxl_read_word( id, P_MOVING_SPEED_L );
-  while(approaching)
-  {
-    double Kp = 2.0;
-    double pos = dxl_read_word( id, P_PRESENT_POSITION_L );
-    double goal_tmp = goal-pos;
-    if(goal_tmp<0) goal_tmp += 4096.0;
-    double new_speed = (goal_tmp)/4096.0 * 300.0 * Kp;
-    if(new_speed > 250.0) new_speed = 250;
-    if(new_speed < 3.0)   new_speed = 3;
-    if((new_speed-approach_speed)>5.0) new_speed = approach_speed + 5.0;
+  dxl_write_word(id, P_MOVING_SPEED_L , speed );
+  dxl_write_word( id, P_GOAL_POSITION_L, goal );
+}
 
-    approach_speed = new_speed;
-    dxl_write_word( id, P_MOVING_SPEED_L, approach_speed);
-    if(pos==goal) approaching = false;
+
+int setupDynamixel(int dev, int baudnum, int id, int speed, int torque)
+{
+  if(dxl_initialize(dev, baudnum) == 1)
+  {
+    dxl_write_word(id, P_LED_STATUS, 1 );
+    if(!(dxl_get_result( ) == COMM_RXSUCCESS))
+    {
+        cout << "Wrong Dynamixel-ID!" << endl;
+        return 0;
+    }
+    dxl_write_word(id, P_TORQUE_LIMIT_L, torque );
+    dxl_write_word(id, P_MOVING_SPEED_L , speed );
+    cout << "Succeed to open USB2Dynamixel!" << endl;
+    sleep(5);
+    return 1;
+
+  }
+  else
+  {
+    cout << "Failed to open USB2Dynamixel!" << endl;
+    cout << "Wrong device or baudnumber!" << endl << endl;
+    cout << "Press Enter key to terminate..." << endl;
+    getchar();
+    return 0;
   }
 }
 
 int main(int argc, char* argv[]) {
+  // Variables for Dynamixel
+  int baudnum;
+  int dev;
+  int id;
+  int speed;
+  int torque;
+  float goal_pos;
 
-  // Default parameters
-  double      d_fragmentSize = 0.0;
-  double      speed_rpm = 10.0;
-  int         baudnum = 34;          // Baudnum 1 = 1000000, 34 = 57142
-  int         deviceIndex = 0;      // /dev/ttyUSBx => x = deviceIndex
+  // Variables for process
+  int angle;
 
-   if(argc>2)
-   {
-      if(argc!=3)
-      {
-         cout << "usage: " << argv[0] << " [speed] [fragmentSize]" << endl;
-         return 0;
-      }
-      speed_rpm         = atof(argv[1]);
-      d_fragmentSize    = atof(argv[2]);
-   }
-  cout << "  speed: " << speed_rpm << "  d_fragmetSize: " << d_fragmentSize << endl;
-
-
-  _fragmentSize = (unsigned int)(d_fragmentSize);
-
-  double timeForHalfRevolution = 60.0 / speed_rpm / 2.0;
-  _angularVelocity = 180.0 / timeForHalfRevolution;
-
-  if(_fragmentSize==0)
+  // Load configuration
+  if (argc > 1)
   {
-    // scans should not be fragmented
-    // ensure fragmentSize to be large enough for a full scan (half revolution)
-    _fragmentSize = timeForHalfRevolution / 0.025 + 100;
-  }
+    id = atoi(argv[1]);
+    baudnum = 34;
+    dev = 1;
+    speed = 250;
+    torque = 500;
+    angle = 10;
+    cout << "id: " << argv[1] << " baudnum: " << baudnum << " dev: " << dev << " speed: " << speed << endl;
 
-  // Set up servo
-  if( dxl_initialize(deviceIndex, baudnum) == 0 )
-  {
-    printf( "Failed to open USB2Dynamixel!\n" );
-    printf( "Press Enter key to terminate...\n" );
-    getchar();
-    return 0;
   }
   else
-    printf( "Succeed to open USB2Dynamixel!\n" );
-  int id = 1;
-
-   // Move to reference position
-  approachPosition(id, 0);
-
-  // Start scanning
-  int speed = 1023.0 / 114.0 * speed_rpm;
-  dxl_write_word( id, P_MOVING_SPEED_L, (int)speed);
-
-  cout << "Entering main loop" << endl;
-  _seq = 0;
-  int prev_pos = 0;
-  while(1)
   {
-    dxl_write_word( id, P_MOVING_SPEED_L, (int)speed);
-
-    unsigned int f;
-    bool rtrig = false;
-
-    for (f = 0; f < _fragmentSize; f++)
-    {
-      int current_pos = dxl_read_word( id, P_PRESENT_POSITION_L );
-
-      rtrig = (current_pos%2048 < prev_pos%2048);
-      prev_pos = current_pos;
-
-      if(rtrig)
-      {
-    //    _nextIsNewScan = true;
-        break;
-      }
-
-
-    }
-
-   // cout << "Scanning elapsed: " << t.reset() << " ms for " << f << " scans" << endl;
-
+    cout << "usage: " << argv[0] << " <id>" << endl;
+    exit(1);
   }
-  cout << "Shutting down" << endl;
-  _running = false;
+
+  // Setup servo
+  if(!setupDynamixel(dev, baudnum, id, speed, torque))
+  {
+    exit(0);
+  }
+
+  // Step to positions
+  cout << "Starting Step Sequence" << endl;
+
+  for(goal_pos = 0.0; goal_pos <= 1023; (goal_pos = goal_pos+102.3))
+  {
+    turn2posDynamixel(id, goal_pos, speed);
+    sleep(2);
+    cout << "Step " << goal_pos << endl;
+  }
 
 
-  dxl_write_word( id, P_MOVING_SPEED_L, 0 ); // stop motor
-  dxl_terminate();                           // Close device
+  cout << "End of program" << endl;
+  // stop motor
+  dxl_write_word( id, P_MOVING_SPEED_L, 0 );
+  dxl_write_word( id, P_LED_STATUS, 0 );
+
+  // Close device
+  dxl_terminate();
 
   return 0;
 }
-
-
-

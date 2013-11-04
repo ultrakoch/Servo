@@ -1,8 +1,16 @@
+/**
+* @file   ${README.txt}
+* @author Rainer Koch
+* @date   ${2013/11/04}
+*
+* Startup servo rotate
+*/
+
 check the device
-    lsusb -t
+lsusb -t
 
 make port acessable
-    sudo chmod 666 /dev/ttyUSB0
+sudo chmod 666 /dev/ttyUSB0
 
 Start programm
-./bin/servo_rotate /dev/ttyUSB0 3 20
+ ./bin/servo_rotate <dynamixel-id>  
